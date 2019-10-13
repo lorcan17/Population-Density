@@ -1,0 +1,133 @@
+---
+output: github_document
+---
+# Introduction
+
+This document looks into the relationship between population and area by country using the R programming language. The data used for this analysis is from this [wikipedia page.](https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_population_density)
+
+The ulimate goal of this analysis is to determine countries which are over/under populated when compared against countries with similar area.
+
+
+```{r setup, include=FALSE}
+#
+# install.packages("rvest")
+# install.packages("xml2")
+# install.packages("magrittr")
+library(rvest)
+library(xml2)
+library(magrittr)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(broom)
+library(knitr)
+```
+
+### Data preperation
+
+Firstly, read in the data. This is farily easy to do in wikipedia. Following this [blog post](https://www.engineeringbigdata.com/web-scraping-wikipedia-world-population-rvest-r/) helped me.
+```{r read_data}
+html <- "https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_population_density"
+xpath <- '//*[@id="mw-content-text"]/div/table'
+global <- html %>% read_html() %>%
+  html_nodes(xpath = xpath) %>% html_table()
+
+
+pop_raw <- global[[1]] %>% as_tibble() %>% clean_names() 
+head(pop_raw)
+```
+Looking at the first 6 rows we can see that this data is in need of a good clean. In the next section of code I remove the commas and convert the column to their correct types.s
+```{r clean_data, warning= FALSE}
+pop <- pop_raw %>%
+  mutate_at(c(
+      "area_km2",
+      "area_mi2",
+      "population",
+      "density_pop_km2",
+      "density_pop_mi2"
+    ),
+   ~ str_replace_all(., ',', '') %>% as.numeric()
+  ) %>%
+  mutate(date = mdy(date),
+         country_or_dependent_territory = str_remove(country_or_dependent_territory,'( *)\\[note .*')) %>%
+  filter(!str_detect(country_or_dependent_territory,"World") ) %>%
+  mutate_at(c("population","area_km2"),list(log = log))
+head(pop)
+```
+
+This looks much neater.
+
+```{r eval=FALSE, include=FALSE}
+pop %>% ggplot(aes(log(population)))+geom_density()
+```
+
+### Data Modelling
+
+Now lets look at the relationship. As the below graph shows, their seems to be a positive relationship between area and population. As area doubles, population doubles also. I've used log as it helps model the relationship better. Mathetically speaking I need to understand this better.
+
+```{r explore_data, warning=FALSE}
+pop %>% ggplot(aes(x = area_km2_log, y = population_log)) +
+  geom_point() + geom_smooth(method = "lm")
+```
+
+Now let's build a model to help quanitfy this relationship.
+
+```{r model_data}
+pop_model <- lm(population_log ~ area_km2_log,pop)
+
+summary(pop_model)
+```
+
+Looking at the summary, it appears there is a relationship between the two variables. The p value is less than 5% so we can reject the null hypothesis. The R squared value of `r round(summary(pop_model)$r.squared,2)` informs us that the relationship is strong but there is room for improving this model. 
+
+Let's look at the residual plots to see if model follows assumptions.
+```{r residual_plot}
+par(mfrow=c(2,2))
+plot(pop_model)
+```
+
+As this is only for fun, I'm happy with the residual plots and model statistics and feel it is suited for the purpose of this analysis.
+
+Let's obtain residuals and convert them back into normal figures rather than log of population.
+
+```{r}
+pop_aug <- pop_model %>% augment(pop) %>%
+  mutate(.resid = round(exp(.fitted)-population),
+         .fitted = round(exp(.fitted)),
+         error = round(population/.fitted,2))
+
+```
+
+### Conclusions
+
+Looking at the below, Macau and Singapore are two of the countries who are over populated when compared against countries with similar area.
+
+UK makes the top 20.
+
+```{r inspect_model, eval=FALSE, include=FALSE}
+pop_aug %>% ggplot(aes(x = population_log,y = .resid))+geom_point()
+# As population increases we tend to over estimate the population in our model
+
+pop_aug %>% ggplot(aes(y = .resid,x = .fitted))+geom_point()
+pop_aug %>% ggplot(aes(x = .cooksd,y = .std.resid))+geom_point()
+```
+```{r, results = 'asis'}
+view_pop <- pop_aug %>%  filter(population > 100000) %>% select(country_or_dependent_territory,area_km2,population,.fitted,.resid,error)
+
+view_pop %>% arrange(desc(error)) %>% head(20) %>%  kable(caption = "Over Populated Countries",format = "markdown",format.args = list(big.mark = ",",scientific =F))
+```
+
+Similarly, we can see French Guiana and Western Sahara are two countries who are currently under populated when compared against countries of similar area.
+
+Interesting to see Canada there.
+```{r, results = 'asis'}
+view_pop %>% arrange(error) %>% head(20) %>%  kable(caption = "Under Populated Countries",format = "markdown",format.args = list(big.mark = ",",scientific =F))
+```
+
+### Further Work
+
+There is still work to do to improve model. The addingt the following may be good starting points.
+
+* Average temperature
+* GDP per capita
+* Mountinous area
