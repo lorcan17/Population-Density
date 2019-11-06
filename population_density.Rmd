@@ -2,11 +2,11 @@
 title: "Population density"
 output: html_document
 ---
-## Introduction
+# Introduction
 
 This document looks into the relationship between population and area by country using the R programming language. The data used for this analysis is from this [wikipedia page.](https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_population_density)
 
-The ulimate goal of this analysis is to determine countries which are over/under populated when compared against countries with similar area.
+The ulimate goal of this analysis is to determine countries who are over/under populated when compared against countries with similar area.
 
 
 ```{r setup, include=FALSE}
@@ -37,7 +37,7 @@ global <- html %>% read_html() %>%
 pop_raw <- global[[1]] %>% as_tibble() %>% clean_names() 
 head(pop_raw)
 ```
-Looking at the first 6 rows we can see that this data is in need of a good clean. In the next section of code I remove the commas and convert the column to their correct types.s
+Looking at the first 6 rows we can see that this data is in need of a good clean. In the next section of code I remove the commas and mutate the column to their correct types.
 ```{r clean_data, warning= FALSE}
 pop <- pop_raw %>%
   mutate_at(c(
@@ -64,7 +64,7 @@ pop %>% ggplot(aes(log(population)))+geom_density()
 
 ### Data Modelling
 
-Now lets look at the relationship. As the below graph shows, their seems to be a positive relationship between area and population. As area doubles, population doubles also. I've used log as it helps model the relationship better. Mathetically speaking I need to understand this better.
+Now lets look at the relationship. As the below graph shows, their seems to be a positive relationship between `area_km2_log` and the `population_log`.  I've transformed the predictor variable as there appears to be non-linear associations in the data. As well as this, I've transformed the response variable to address the issue of non-constant variance.
 
 ```{r explore_data, warning=FALSE}
 pop %>% ggplot(aes(x = area_km2_log, y = population_log)) +
@@ -87,7 +87,7 @@ par(mfrow=c(2,2))
 plot(pop_model)
 ```
 
-As this is only for fun, I'm happy with the residual plots and model statistics and feel it is suited for the purpose of this analysis.
+As this is only for fun, I'm happy with the residual plots and model statistics and feel it is suited for the purpose of this analysis. 
 
 Let's obtain residuals and convert them back into normal figures rather than log of population.
 
@@ -118,16 +118,15 @@ view_pop <- pop_aug %>%  filter(population > 100000) %>% select(country_or_depen
 view_pop %>% arrange(desc(error)) %>% head(20) %>%  kable(caption = "Over Populated Countries",format = "markdown",format.args = list(big.mark = ",",scientific =F))
 ```
 
-Similarly, we can see French Guiana and Western Sahara are two countries who are currently under populated when compared against countries of similar area.
+Similarly, we can see French Guiana and Western Sahara are two countries who are currently under populated when compared against countries of similar area. Western sahara is no surpise as it is predominately desert and from a quick google search it appears French Guiana comprises of mostly tropical rainforests.
 
-Interesting to see Canada there.
 ```{r, results = 'asis'}
 view_pop %>% arrange(error) %>% head(20) %>%  kable(caption = "Under Populated Countries",format = "markdown",format.args = list(big.mark = ",",scientific =F))
 ```
 
 ### Further Work
 
-There is still work to do to improve model. The addingt the following may be good starting points.
+There is still work to do to improve model. Adding the following may be good starting points.
 
 * Average temperature
 * GDP per capita
